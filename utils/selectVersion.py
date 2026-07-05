@@ -136,24 +136,53 @@ def get_dir_name(filepath):
     return (dirlist, names)
 
 
-def macos_wechat_candidates():
+def macos_wechat_candidates(include_private=True):
     home = str(Path.home())
-    return [
+    private_candidates = [
         os.path.join(home, 'Library', 'Containers', 'com.tencent.xinWeChat', 'Data', 'Documents', 'xwechat_files'),
         os.path.join(home, 'Library', 'Containers', 'com.tencent.xinWeChat', 'Data', 'Library', 'Application Support', 'com.tencent.xinWeChat'),
-        os.path.join(home, 'Documents', 'xwechat_files'),
         os.path.join(home, 'Library', 'Containers', 'com.tencent.WeWorkMac', 'Data', 'Documents', 'WXWork', 'Users'),
         os.path.join(home, 'Library', 'Containers', 'com.tencent.WeWorkMac', 'Data', 'Documents', 'WeWork', 'Users'),
         os.path.join(home, 'Library', 'Containers', 'com.tencent.WeWorkMac', 'Data', 'Library', 'Application Support', 'WXWork', 'Data'),
     ]
+    public_candidates = [
+        os.path.join(home, 'Documents', 'xwechat_files'),
+    ]
+    if include_private:
+        return private_candidates + public_candidates
+    return public_candidates
 
 
-def find_all_wechat_paths():
+def request_macos_private_data_access():
+    """Trigger macOS privacy permission before the real scan runs."""
+    if os.name != 'posix':
+        return False
+
+    requested_or_checked = False
+    for path in macos_wechat_candidates(include_private=True):
+        if path in macos_wechat_candidates(include_private=False):
+            continue
+        probes = [path, os.path.dirname(path)]
+        for probe in probes:
+            try:
+                if os.path.exists(probe):
+                    os.listdir(probe)
+                    requested_or_checked = True
+                    break
+            except PermissionError:
+                requested_or_checked = True
+                break
+            except OSError:
+                continue
+    return requested_or_checked
+
+
+def find_all_wechat_paths(include_private=True):
     """Return valid WeChat/WXWork data roots from common locations and registry values."""
     user = getpass.getuser()
     candidates = []
     if os.name == 'posix':
-        candidates.extend(macos_wechat_candidates())
+        candidates.extend(macos_wechat_candidates(include_private=include_private))
 
     candidates.extend([
         os.path.join(r'C:\Users', user, 'Documents', 'WeChat Files'),

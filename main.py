@@ -1,4 +1,56 @@
 import sys
+import os
+import tempfile
+import traceback
+import faulthandler
+from pathlib import Path
+
+
+APP_NAME = "Clean My WeChat"
+APP_ORG = "CleanMyWechat"
+
+
+def early_log_dir():
+    if sys.platform == "darwin":
+        return os.path.join(str(Path.home()), "Library", "Application Support", APP_NAME)
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.realpath(sys.executable))
+    return os.path.dirname(os.path.realpath(__file__))
+
+
+def install_early_crash_logging():
+    log_file = None
+    try:
+        for path in (early_log_dir(), tempfile.gettempdir()):
+            try:
+                os.makedirs(path, exist_ok=True)
+                crash_log = os.path.join(path, "cleanmywechat_startup_crash.log")
+                log_file = open(crash_log, "a", encoding="utf-8")
+                break
+            except Exception:
+                log_file = None
+        if log_file is None:
+            return
+        log_file.write("\n==== Clean My WeChat startup ====\n")
+        log_file.write(f"argv={sys.argv}\n")
+        log_file.write(f"frozen={getattr(sys, 'frozen', False)} platform={sys.platform}\n")
+        log_file.flush()
+        try:
+            faulthandler.enable(log_file, all_threads=True)
+        except Exception:
+            pass
+
+        def excepthook(exc_type, exc_value, exc_traceback):
+            traceback.print_exception(exc_type, exc_value, exc_traceback, file=log_file)
+            log_file.flush()
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+        sys.excepthook = excepthook
+    except Exception:
+        pass
+
+
+install_early_crash_logging()
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog, QGraphicsDropShadowEffect, QListWidgetItem, QListView, \
     QWidget, QLabel, QFrame, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QMessageBox, QTableWidget, \
@@ -7,16 +59,15 @@ from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QThread, pyqtSign
 from PyQt5.QtGui import QMouseEvent, QCursor, QColor, QDesktopServices, QIcon
 from PyQt5.uic import loadUi
 
-from pathlib import Path
 from dateutil import relativedelta
 import utils.resources
-import os, datetime, time, re, math, shutil, json, logging
-import tempfile
+import datetime, time, re, math, shutil, json, logging
 
 from utils.deleteThread import *
 from utils.multiDeleteThread import multiDeleteThread
 from utils.selectVersion import *
-from utils.selectVersion import check_dir, existing_user_config, find_all_wechat_paths, get_dir_name, is_wechat_like_account_dir
+from utils.selectVersion import check_dir, existing_user_config, find_all_wechat_paths, get_dir_name, \
+    is_wechat_like_account_dir, request_macos_private_data_access
 from utils.scanThread import ScanThread
 # 设置应用程序在高DPI屏幕上启用高DPI缩放。Set the application to enable high DPI scaling on high DPI screens
 # 注意事项：此行代码必须在QApplication实例化之前调用，否则会调用失败。Notes: This line of code must be called before the instantiation of the QApplication object; otherwise, it will fail
@@ -53,8 +104,6 @@ LOG_PATH = os.path.join(working_dir, "cleanmywechat.log")
 STATE_PATH = os.path.join(working_dir, "clean_state.json")
 WHITELIST_PATH = os.path.join(working_dir, "whitelist.txt")
 PREVIEW_PATH = os.path.join(working_dir, "last_scan_preview.txt")
-APP_NAME = "Clean My WeChat"
-APP_ORG = "CleanMyWechat"
 APP_ICON_PATH = os.path.join(resource_dir, "images", "wechat.png")
 
 logging.basicConfig(
@@ -402,6 +451,11 @@ def open_local_path(path):
 
 # 主窗口
 class Window(QMainWindow):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.m_drag = False
+        self.m_DragPosition = QPoint(0, 0)
+
     def mousePressEvent(self, event):
         # 重写一堆方法使其支持拖动
         if event.button() == Qt.LeftButton:
@@ -412,7 +466,7 @@ class Window(QMainWindow):
 
     def mouseMoveEvent(self, QMouseEvent):
         try:
-            if Qt.LeftButton and self.m_drag:
+            if QMouseEvent.buttons() & Qt.LeftButton and self.m_drag:
                 self.move(QMouseEvent.globalPos() - self.m_DragPosition)
                 QMouseEvent.accept()
         except Exception:
@@ -1830,14 +1884,31 @@ class MainWindow(Window):
             return None
         return ensure_config_defaults({"data_dir": data_dirs, "users": user_config})
 
-    def smart_detect_wechat_path(self):
-        config = self.create_config_from_paths(find_all_wechat_paths())
+    def finish_smart_detect_wechat_path(self, show_config_on_fail=False):
+        try:
+            config = self.create_config_from_paths(find_all_wechat_paths())
+        except Exception:
+            logging.exception("自动检测微信目录失败")
+            config = None
         if not config:
+            if show_config_on_fail:
+                self.show_config_window()
             return False
         save_json(CONFIG_PATH, config)
         self.config_exists = True
         self.setSuccessinfo("已自动检测到微信数据目录，可以开始清理。")
         return True
+
+    def smart_detect_wechat_path(self):
+        if sys.platform == "darwin":
+            self.setWarninginfo("正在请求访问微信数据目录权限，请在系统弹窗中选择允许。")
+            try:
+                request_macos_private_data_access()
+            except Exception:
+                logging.exception("请求 macOS 微信目录访问权限失败")
+            QTimer.singleShot(1500, lambda: self.finish_smart_detect_wechat_path(show_config_on_fail=True))
+            return None
+        return self.finish_smart_detect_wechat_path()
 
     def check_auto_clean_after_start(self):
         try:
@@ -1880,7 +1951,8 @@ class MainWindow(Window):
 
             timer = QTimer(self)
             def detect_or_configure():
-                if not self.smart_detect_wechat_path():
+                result = self.smart_detect_wechat_path()
+                if result is False:
                     self.show_config_window()
 
             timer.timeout.connect(detect_or_configure)
