@@ -47,3 +47,9 @@ https://wwbie.lanzoue.com/ixTMX3r1jomh)
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=blackboxo/CleanMyWechat&type=Date)](https://star-history.com/#blackboxo/CleanMyWechat&Date)
+
+## 关注开发者
+
+欢迎在小红书关注开发者，获取最新动态与更新资讯：
+
+![小红书](images/xiaohongshu.jpg)
