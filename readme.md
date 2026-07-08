@@ -25,7 +25,7 @@ macOS 版本：
 [国内地址 - 点击下载](
 https://wwbie.lanzoue.com/ixTMX3r1jomh)
 
-[Github Release - 点击下载](https://github.com/blackboxo/CleanMyWechat/releases/download/v3.0_mac/CleanMyWechat.dmg)
+[Github Release - 点击下载](https://github.com/blackboxo/CleanMyWechat/releases/download/v3.1_mac/CleanMyWechat_v3.1_mac.dmg)
 
 ## 特性
 1. 自动识别所有微信及企业微信账号；
