@@ -52,4 +52,4 @@ https://wwbie.lanzoue.com/ixTMX3r1jomh)
 
 欢迎在小红书关注开发者，获取最新动态与更新资讯：
 
-![小红书](images/xiaohongshu.jpg)
+[![小红书](images/xiaohongshu.jpg)](https://www.xiaohongshu.com/user/profile/59c0a45651783a05ce64eb00)
