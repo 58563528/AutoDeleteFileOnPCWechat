@@ -1968,8 +1968,39 @@ class MainWindow(Window):
             timer.start(800)
 
 
+def check_full_disk_access():
+    """检测是否拥有完全磁盘访问权限，没有则弹窗引导用户开启。"""
+    if sys.platform != "darwin":
+        return True
+    test_path = os.path.join(str(Path.home()), "Library", "Containers", "com.tencent.xinWeChat")
+    if not os.path.exists(test_path):
+        return True
+    try:
+        os.listdir(test_path)
+        return True
+    except PermissionError:
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowTitle("需要完全磁盘访问权限")
+        msg.setText(
+            "Clean My WeChat 需要「完全磁盘访问权限」才能读取微信数据目录。\n\n"
+            "请前往：系统设置 → 隐私与安全性 → 完全磁盘访问权限\n"
+            "将 Clean My WeChat 添加到列表中并开启，然后重新打开本应用。"
+        )
+        msg.setStandardButtons(QMessageBox.Open | QMessageBox.Ignore)
+        msg.setDefaultButton(QMessageBox.Open)
+        btn = msg.exec_()
+        if btn == QMessageBox.Open:
+            QDesktopServices.openUrl(QUrl("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"))
+        return False
+    except OSError:
+        return True
+
+
 if __name__ == '__main__':
     app = QApplication([])
     configure_application(app)
+    if not check_full_disk_access():
+        sys.exit(0)
     win = MainWindow()
     app.exec_()
